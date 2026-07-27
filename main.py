@@ -2,13 +2,68 @@ import gi
 
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, GLib
+from pathlib import Path
+import configparser
+
+
+# application directries
+directories = [
+    Path("/usr/share/applications"),
+    Path.home() / ".local/share/applications",
+]
+
+def get_application_with_metadata(filepath):
+    config = configparser.ConfigParser(interpolation=None)
+    config.read(filepath, encoding="utf-8")
+
+    if not config.has_section("Desktop Entry"):
+        return None
+
+    entry = config["Desktop Entry"]
+
+    # Only include Application types (skip Link, Directory, etc.)
+    if entry.get("Type") != "Application":
+        return None
+
+    # Skip apps marked as hidden from launchers
+    if entry.get("NoDisplay", "false").lower() == "true":
+        return None
+
+    name = entry.get("Name", "")
+    if not name:
+        return None
+
+    comment = entry.get("Comment", "")
+    exec_cmd = entry.get("Exec", "")
+    icon = entry.get("Icon", "")
+
+    categories = entry.get("Categories", "")
+
+    return {
+        "name": name,
+        "comment": comment,
+        "exec": exec_cmd,
+        "icon": icon,
+        "categories": categories,
+        "file": str(filepath),
+    }
+
+def load_apps():
+    apps = []
+    seen = set()
+
+    for desktop_dir in directories:
+        for filepath in desktop_dir.glob("*.desktop"):
+            app = get_application_with_metadata(filepath)
+            if app and app["name"] not in seen:
+                seen.add(app["name"])
+                apps.append(app)
+
+    apps.sort(key=lambda a: a["name"].lower())
+    return apps
 
 # apps as list 
-apps = [
-    {"name": "Calculator"},
-    {"name": "Video Player"},
-    {"name": "Spotify"},
-]
+apps = load_apps()
 
 # main window
 class Window(Gtk.Window):
@@ -22,7 +77,7 @@ class Window(Gtk.Window):
         self.set_decorated(False)
         self.set_position(Gtk.WindowPosition.CENTER)
 
-        self.app_list = apps
+        self.app_list = apps 
         self.selected_index = 0
 
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
@@ -110,7 +165,6 @@ def main():
     win = Window()
     win.connect("destroy", Gtk.main_quit)
     Gtk.main()
-
 
 if __name__ == "__main__":
     main()
